@@ -6,51 +6,56 @@ from official.projects.video_ssl.configs import video_ssl as exp_cfg
 
 # -- CONFIGURATION --
 
-def override_for_ucf101():
-  with open('./configs/experiments/cvrl_linear_eval_k600.yaml', 'r') as file:
-    override_params = yaml.full_load(file)
 
-  exp_config = exp_cfg.exp_factory.get_exp_config('video_ssl_linear_eval_kinetics600')
-  exp_config.override(override_params, is_strict=False)
-  WIDTH, HEIGHT = 224, 224
+def override_for_ucf101(n_frames: int):
+    with open("models/official/projects/video_ssl/configs/experiments/cvrl_linear_eval_k600.yaml", "r") as file:
+        override_params = yaml.full_load(file)
 
-  # Runtime configuration.
-  exp_config.runtime.distribution_strategy = "mirrored"
+    exp_config = exp_cfg.exp_factory.get_exp_config("video_ssl_linear_eval_kinetics600")
+    exp_config.override(override_params, is_strict=False)
+    WIDTH, HEIGHT = 224, 224
 
-  # Task configuration.
-  exp_config.task.freeze_backbone = True
-  exp_config.task.init_checkpoint = "../r3d_1x_k600_800ep/r3d_1x_k600_800ep_backbone-1"
-  exp_config.task.init_checkpoint_modules = "backbone"
+    # Runtime configuration.
+    exp_config.runtime.distribution_strategy = "mirrored"
 
-  # Model configuration.
-  exp_config.task.model.projection_dim = 10
+    # Task configuration.
+    exp_config.task.freeze_backbone = True
+    exp_config.task.init_checkpoint = (
+        "../r3d_1x_k600_800ep/r3d_1x_k600_800ep_backbone-1"
+    )
+    exp_config.task.init_checkpoint_modules = "backbone"
 
-  # Training data configuration.
-  exp_config.task.train_data.input_path = '../ucf101_tfrecords/train*'
-  exp_config.task.train_data.num_classes=10
-  exp_config.task.train_data.global_batch_size = 2
-  exp_config.task.train_data.min_image_size = WIDTH
-  exp_config.task.train_data.num_examples = 400
-  exp_config.task.train_data.feature_shape = (n_frames, HEIGHT, WIDTH, 3)
+    # Model configuration.
+    exp_config.task.model.projection_dim = 10
 
-  # Validation data configuration.
-  exp_config.task.validation_data.num_classes=10
-  exp_config.task.validation_data.input_path = '../ucf101_tfrecords/valid*'
-  exp_config.task.validation_data.global_batch_size = 2
-  exp_config.task.validation_data.min_image_size = WIDTH
-  exp_config.task.validation_data.num_examples = 100
-  exp_config.task.validation_data.feature_shape = (n_frames, HEIGHT, WIDTH, 3)
+    # Training data configuration.
+    exp_config.task.train_data.input_path = "../ucf101_tfrecords/train*"
+    exp_config.task.train_data.num_classes = 10
+    exp_config.task.train_data.global_batch_size = 2
+    exp_config.task.train_data.min_image_size = WIDTH
+    exp_config.task.train_data.num_examples = 400
+    exp_config.task.train_data.feature_shape = (n_frames, HEIGHT, WIDTH, 3)
 
-  # Trainer configuration.
-  exp_config.trainer.train_steps = 2000
-  exp_config.trainer.checkpoint_interval = 200
-  exp_config.trainer.steps_per_loop = 200
-  exp_config.trainer.summary_interval = 200
-  exp_config.trainer.validation_interval = 200
-  exp_config.trainer.validation_steps = 200
-  exp_config.trainer.optimizer_config.learning_rate.cosine.decay_steps = 2000
-  exp_config.trainer.optimizer_config.learning_rate.cosine.initial_learning_rate = 0.008
-  exp_config.trainer.optimizer_config.warmup.linear.warmup_learning_rate = 0.007
-  exp_config.trainer.optimizer_config.warmup.linear.warmup_steps = 200
+    # Validation data configuration.
+    exp_config.task.validation_data.num_classes = 10
+    exp_config.task.validation_data.input_path = "../ucf101_tfrecords/valid*"
+    exp_config.task.validation_data.global_batch_size = 2
+    exp_config.task.validation_data.min_image_size = WIDTH
+    exp_config.task.validation_data.num_examples = 100
+    exp_config.task.validation_data.feature_shape = (n_frames, HEIGHT, WIDTH, 3)
 
-  return exp_config
+    # Trainer configuration.
+    exp_config.trainer.train_steps = 2000
+    exp_config.trainer.checkpoint_interval = 200
+    exp_config.trainer.steps_per_loop = 200
+    exp_config.trainer.summary_interval = 200
+    exp_config.trainer.validation_interval = 200
+    exp_config.trainer.validation_steps = 200
+    exp_config.trainer.optimizer_config.learning_rate.cosine.decay_steps = 2000
+    exp_config.trainer.optimizer_config.learning_rate.cosine.initial_learning_rate = (
+        0.008
+    )
+    exp_config.trainer.optimizer_config.warmup.linear.warmup_learning_rate = 0.007
+    exp_config.trainer.optimizer_config.warmup.linear.warmup_steps = 200
+
+    return exp_config
