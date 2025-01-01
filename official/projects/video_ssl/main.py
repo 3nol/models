@@ -4,7 +4,6 @@ from utils import logger, RESOURCES_DATA, RESOURCES_EVALS
 from .prepare import *
 from .config import override_for_ucf101
 
-pp = pprint.PrettyPrinter(indent=4)
 logger.info(f"Running TensorFlow {tf.__version__}...")
 
 # -- TF PROJECT IMPORTS --
@@ -121,6 +120,79 @@ def main():
     )
     write_tfrecords(test_ds, os.path.join(output_dir, "test"), num_shards=5)
 
-    # Adapt configuration to UCF101 dataset.
-    override_for_ucf101(n_frames)
+    # Adapt configuration to UCF101 dataset and pretty-print.
+    WIDTH, HEIGHT = 224, 224
+    exp_config = override_for_ucf101(n_frames, WIDTH, HEIGHT)
+    # Pretty-print current config.
+    pp = pprint.PrettyPrinter(indent=4)
+    # logger.debug(pp.pformat(exp_config))
     logger.info("Done with configuration (overwrote from Kinetics-600).")
+
+    # Try detecting the hardware.
+    try:
+        tpu_resolver = (
+            tf.distribute.cluster_resolver.TPUClusterResolver()
+        )  # TPU detection
+    except ValueError:
+        tpu_resolver = None
+        gpus = tf.config.experimental.list_logical_devices("GPU")
+
+    # Select appropriate distribution strategy.
+    if tpu_resolver:
+        tf.config.experimental_connect_to_cluster(tpu_resolver)
+        tf.tpu.experimental.initialize_tpu_system(tpu_resolver)
+        distribution_strategy = tf.distribute.experimental.TPUStrategy(tpu_resolver)
+        logger.debug("Running on TPU ", tpu_resolver.cluster_spec().as_dict()["worker"])
+    elif len(gpus) > 1:
+        distribution_strategy = tf.distribute.MirroredStrategy(
+            [gpu.name for gpu in gpus]
+        )
+        logger.debug("Running on multiple GPUs ", [gpu.name for gpu in gpus])
+    elif len(gpus) == 1:
+        distribution_strategy = tf.distribute.get_strategy()
+        # Default strategy that works on CPU and single GPU.
+        logger.debug("Running on single GPU ", gpus[0].name)
+    else:
+        # Default strategy that works on CPU and single GPU.
+        distribution_strategy = tf.distribute.get_strategy()
+        logger.debug("Running on CPU")
+    logger.debug(
+        "Number of accelerators: " + str(distribution_strategy.num_replicas_in_sync)
+    )
+
+    # Performing the adctual training.
+    model_dir = pathlib.Path(RESOURCES_EVALS, "trained_model")
+    export_dir = pathlib.Path(RESOURCES_EVALS, "exported_model")
+    with distribution_strategy.scope():
+        task = task_factory.get_task(exp_config.task, logging_dir=model_dir)
+
+    # Traing and export model.
+    model, eval_logs = train_lib.run_experiment(
+        distribution_strategy=distribution_strategy,
+        task=task,
+        mode="train_and_eval",
+        params=exp_config,
+        model_dir=model_dir,
+    )
+    export_saved_model_lib.export_inference_graph(
+        input_type="image_tensor",
+        batch_size=1,
+        input_image_size=[n_frames, HEIGHT, WIDTH],
+        params=exp_config,
+        checkpoint_path=tf.train.latest_checkpoint(model_dir),
+        export_dir=export_dir,
+    )
+
+    # Import exported model and run predictions.
+    imported = tf.saved_model.load(export_dir)
+    model_fn = imported.signatures["serving_default"]
+
+    frames, label = list(test_ds.shuffle(buffer_size=90).take(1))[0]
+    frames = tf.expand_dims(frames, axis=0)
+    result = model_fn(frames)
+    predicted_label = tf.argmax(result["probs"][0])
+    logger.info(f"Actual: {CLASSES[label]}")
+    logger.info(f"Predicted: {CLASSES[predicted_label]}")
+    imageio.mimsave(
+        pathlib.Path(RESOURCES_EVALS, "animation.gif").as_posix(), frames[0], fps=10
+    )
